@@ -1,0 +1,33 @@
+groups:
+  - name: jumpcloud_computed
+    interval: 300s
+    rules:
+      - record: jumpcloud_offline_system_ratio
+        expr: jumpcloud_systems_offline_total / (jumpcloud_systems_active_total > 0)
+
+      - record: jumpcloud_mfa_coverage_ratio
+        expr: jumpcloud_users_mfa_configured_total / (jumpcloud_users_total > 0)
+
+      - record: jumpcloud_license_headroom
+        expr: jumpcloud_org_max_system_users - jumpcloud_org_current_users
+
+      - record: jumpcloud_fleet_health_score
+        expr: |
+          (jumpcloud_systems_online_total / (jumpcloud_systems_active_total > 0)) * 40
+          + (jumpcloud_users_mfa_configured_total / (jumpcloud_users_total > 0)) * 30
+          + clamp_max(1 - (jumpcloud_alerts_critical_total / 10), 1) * 30
+
+      - record: jumpcloud_policy_avg_compliance
+        expr: avg(jumpcloud_policy_compliance_percent)
+
+      - record: jumpcloud_users_suspended_ratio
+        expr: jumpcloud_users_suspended_total / (jumpcloud_users_total > 0)
+
+      - record: jumpcloud_health_component_online
+        expr: (jumpcloud_systems_online_total / (jumpcloud_systems_active_total > 0)) * 40
+
+      - record: jumpcloud_health_component_mfa
+        expr: (jumpcloud_users_mfa_configured_total / (jumpcloud_users_total > 0)) * 30
+
+      - record: jumpcloud_health_component_alerts
+        expr: clamp_max(1 - (jumpcloud_alerts_critical_total / 10), 1) * 30

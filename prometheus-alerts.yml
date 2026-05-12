@@ -1,0 +1,143 @@
+groups:
+  - name: jumpcloud_critical
+    rules:
+      - alert: JumpCloudAPIDown
+        expr: up{job="jumpcloud_api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "JumpCloud API collector is down"
+          description: "The jumpcloud-api service has been unreachable for 2 minutes. Metrics are stale."
+
+      - alert: JumpCloudCollectorStale
+        expr: time() - jumpcloud_last_collection_timestamp_seconds > 900
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "JumpCloud metrics collection is stale"
+          description: "No successful collection in the last 15 minutes. Check API key and connectivity."
+
+      - alert: JumpCloudLicenseExhausted
+        expr: jumpcloud_org_seats_used_percent >= 100
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "JumpCloud user licenses are exhausted"
+          description: "Org {{ $labels.org_name }} has used 100% of user seats. New users cannot be added."
+
+      - alert: JumpCloudCriticalAlertsOpen
+        expr: jumpcloud_alerts_critical_total > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "JumpCloud has open critical alerts"
+          description: "{{ $value }} critical alerts are open in JumpCloud."
+
+  - name: jumpcloud_fleet_health
+    rules:
+      - alert: JumpCloudLicenseSaturation
+        expr: jumpcloud_org_seats_used_percent >= 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "JumpCloud user licenses near limit"
+          description: "Org {{ $labels.org_name }} is at {{ $value | printf \"%.0f\" }}% seat capacity."
+
+      - alert: JumpCloudHighOfflineSystems
+        expr: jumpcloud_offline_system_ratio > 0.20
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 20% of systems are offline"
+          description: "{{ $value | printf \"%.1%\" }} of active systems have not checked in for 15+ minutes."
+
+      - alert: JumpCloudMFACoveragelow
+        expr: jumpcloud_mfa_coverage_ratio < 0.80
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MFA coverage below 80%"
+          description: "Only {{ $value | printf \"%.1%\" }} of users have MFA configured."
+
+      - alert: JumpCloudPolicyComplianceLow
+        expr: jumpcloud_policy_compliance_percent < 80
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Policy compliance below 80%"
+          description: "Policy '{{ $labels.policy_name }}' is at {{ $value | printf \"%.0f\" }}% compliance."
+
+      - alert: JumpCloudSystemsOfflineSurge
+        expr: delta(jumpcloud_systems_offline_total[30m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sudden increase in offline systems"
+          description: "{{ $value | printf \"%.0f\" }} additional systems went offline in the last 30 minutes."
+
+  - name: jumpcloud_security
+    rules:
+      - alert: JumpCloudUsersWithoutMFA
+        expr: (jumpcloud_users_total - jumpcloud_users_mfa_configured_total) > 10
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Users without MFA configured"
+          description: "{{ $value | printf \"%.0f\" }} active users do not have MFA configured."
+
+      - alert: JumpCloudSuspendedUsersHigh
+        expr: jumpcloud_users_suspended_total > 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High number of suspended users"
+          description: "{{ $value | printf \"%.0f\" }} users are currently suspended."
+
+      - alert: JumpCloudLockedAccountsHigh
+        expr: jumpcloud_users_locked_total > 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Multiple locked accounts"
+          description: "{{ $value | printf \"%.0f\" }} accounts are locked — possible brute-force activity."
+
+      - alert: JumpCloudOpenAlertsHigh
+        expr: jumpcloud_alerts_open_total > 20
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High number of open JumpCloud alerts"
+          description: "{{ $value | printf \"%.0f\" }} alerts are open and unresolved."
+
+  - name: jumpcloud_collector_health
+    rules:
+      - alert: JumpCloudCollectionErrors
+        expr: rate(jumpcloud_collection_errors_total[15m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "JumpCloud metrics collection errors"
+          description: "Collector '{{ $labels.collector }}' is failing at {{ $value | printf \"%.2f\" }} errors/s."
+
+      - alert: JumpCloudCollectionSlow
+        expr: jumpcloud_collection_duration_seconds > 120
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "JumpCloud collection step is slow"
+          description: "Collector '{{ $labels.collector }}' took {{ $value | printf \"%.0f\" }}s (threshold 120s)."
