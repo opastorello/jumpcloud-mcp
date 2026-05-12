@@ -117,8 +117,17 @@ services:
     command:
       - '--config.file=/etc/alertmanager/alertmanager.yml'
       - '--storage.path=/alertmanager'
+      - '--web.external-url=https://jumpcloud.pastorello-lab.com.br/alertmanager/'
+      - '--web.route-prefix=/alertmanager'
     volumes:
       - 'alertmanager-data:/alertmanager'
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.jumpcloud-alertmanager.rule=Host(`jumpcloud.pastorello-lab.com.br`) && PathPrefix(`/alertmanager`)"
+      - traefik.http.routers.jumpcloud-alertmanager.entrypoints=https
+      - traefik.http.routers.jumpcloud-alertmanager.tls=true
+      - traefik.http.routers.jumpcloud-alertmanager.tls.certresolver=letsencrypt
+      - traefik.http.services.jumpcloud-alertmanager.loadbalancer.server.port=9093
     depends_on:
       prometheus:
         condition: service_healthy
