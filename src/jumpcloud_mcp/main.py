@@ -8,9 +8,10 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from loguru import logger
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
@@ -92,3 +93,36 @@ async def prometheus_metrics():
 
 
 app.include_router(api_v1_router)
+
+_PROMETHEUS_BASE = "http://prometheus:9090"
+_ALERTMANAGER_BASE = "http://alertmanager:9093"
+
+
+@app.api_route("/prometheus/{path:path}", methods=["GET", "POST"])
+async def prometheus_proxy(request: Request, path: str):
+    url = f"{_PROMETHEUS_BASE}/{path}"
+    if request.url.query:
+        url = f"{url}?{request.url.query}"
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.request(
+            method=request.method,
+            url=url,
+            content=await request.body(),
+            headers={"Accept": request.headers.get("Accept", "*/*")},
+        )
+    return Response(content=resp.content, status_code=resp.status_code, media_type=resp.headers.get("content-type"))
+
+
+@app.api_route("/alertmanager/{path:path}", methods=["GET", "POST"])
+async def alertmanager_proxy(request: Request, path: str):
+    url = f"{_ALERTMANAGER_BASE}/{path}"
+    if request.url.query:
+        url = f"{url}?{request.url.query}"
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.request(
+            method=request.method,
+            url=url,
+            content=await request.body(),
+            headers={"Accept": request.headers.get("Accept", "*/*")},
+        )
+    return Response(content=resp.content, status_code=resp.status_code, media_type=resp.headers.get("content-type"))

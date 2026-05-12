@@ -82,18 +82,11 @@ services:
     entrypoint: /bin/sh
     command:
       - '-c'
-      - "cat > /tmp/prometheus.yml <<EOF\nglobal:\n  scrape_interval: 300s\n  evaluation_interval: 300s\nalerting:\n  alertmanagers:\n    - static_configs:\n        - targets: ['alertmanager:9093']\nrule_files:\n  - /etc/prometheus/alerts.yml\n  - /etc/prometheus/recording-rules.yml\nscrape_configs:\n  - job_name: 'jumpcloud'\n    scheme: http\n    authorization:\n      type: Bearer\n      credentials: '$$API_SECRET_TOKEN'\n    static_configs:\n      - targets: ['jumpcloud-api:8000']\n    scrape_interval: 300s\n    scrape_timeout: 30s\nEOF\nexec /bin/prometheus \\\n  --config.file=/tmp/prometheus.yml \\\n  --storage.tsdb.path=/prometheus \\\n  --storage.tsdb.retention.time=90d \\\n  --web.enable-lifecycle \\\n  --web.external-url=https://jumpcloud.pastorello-lab.com.br/prometheus/ \\\n  --web.route-prefix=/prometheus\n"
+      - "cat > /tmp/prometheus.yml <<EOF\nglobal:\n  scrape_interval: 300s\n  evaluation_interval: 300s\nalerting:\n  alertmanagers:\n    - static_configs:\n        - targets: ['alertmanager:9093']\nrule_files:\n  - /etc/prometheus/alerts.yml\n  - /etc/prometheus/recording-rules.yml\nscrape_configs:\n  - job_name: 'jumpcloud'\n    scheme: http\n    authorization:\n      type: Bearer\n      credentials: '$$API_SECRET_TOKEN'\n    static_configs:\n      - targets: ['jumpcloud-api:8000']\n    scrape_interval: 300s\n    scrape_timeout: 30s\nEOF\nexec /bin/prometheus \\\n  --config.file=/tmp/prometheus.yml \\\n  --storage.tsdb.path=/prometheus \\\n  --storage.tsdb.retention.time=90d \\\n  --web.enable-lifecycle\n"
     environment:
       - 'API_SECRET_TOKEN=${API_SECRET_TOKEN:-}'
     volumes:
       - 'prometheus-data:/prometheus'
-    labels:
-      - traefik.enable=true
-      - "traefik.http.routers.jumpcloud-prometheus.rule=Host(`jumpcloud.pastorello-lab.com.br`) && PathPrefix(`/prometheus`)"
-      - traefik.http.routers.jumpcloud-prometheus.entrypoints=https
-      - traefik.http.routers.jumpcloud-prometheus.tls=true
-      - traefik.http.routers.jumpcloud-prometheus.tls.certresolver=letsencrypt
-      - traefik.http.services.jumpcloud-prometheus.loadbalancer.server.port=9090
     depends_on:
       jumpcloud-api:
         condition: service_healthy
@@ -117,17 +110,8 @@ services:
     command:
       - '--config.file=/etc/alertmanager/alertmanager.yml'
       - '--storage.path=/alertmanager'
-      - '--web.external-url=https://jumpcloud.pastorello-lab.com.br/alertmanager/'
-      - '--web.route-prefix=/alertmanager'
     volumes:
       - 'alertmanager-data:/alertmanager'
-    labels:
-      - traefik.enable=true
-      - "traefik.http.routers.jumpcloud-alertmanager.rule=Host(`jumpcloud.pastorello-lab.com.br`) && PathPrefix(`/alertmanager`)"
-      - traefik.http.routers.jumpcloud-alertmanager.entrypoints=https
-      - traefik.http.routers.jumpcloud-alertmanager.tls=true
-      - traefik.http.routers.jumpcloud-alertmanager.tls.certresolver=letsencrypt
-      - traefik.http.services.jumpcloud-alertmanager.loadbalancer.server.port=9093
     depends_on:
       prometheus:
         condition: service_healthy
