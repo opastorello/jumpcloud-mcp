@@ -21,7 +21,8 @@ class Settings(BaseSettings):
     MCP_TRANSPORT: str = "stdio"
     MCP_HOST: str = "0.0.0.0"
     MCP_PORT: int = 8002
-    MCP_SECRET_TOKEN: str = ""
+    API_SECRET_TOKEN: str = ""  # protects FastAPI /metrics and v1/ routes
+    MCP_SECRET_TOKEN: str = ""  # protects MCP transport
 
     LOG_LEVEL: str = "INFO"
 

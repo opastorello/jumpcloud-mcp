@@ -1,0 +1,3 @@
+FROM prom/prometheus:latest
+COPY prometheus-alerts.yml /etc/prometheus/alerts.yml
+COPY prometheus-recording-rules.yml /etc/prometheus/recording-rules.yml

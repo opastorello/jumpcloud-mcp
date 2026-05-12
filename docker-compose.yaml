@@ -1,57 +1,120 @@
 services:
   jumpcloud-api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    env_file: .env
+    build: .
     ports:
-      - "8000:8000"
+      - '8020:8000'
+    environment:
+      - 'JUMPCLOUD_API_KEY=${JUMPCLOUD_API_KEY:-}'
+      - 'JUMPCLOUD_ORG_ID=${JUMPCLOUD_ORG_ID:-}'
+      - 'API_SECRET_TOKEN=${API_SECRET_TOKEN:-}'
+      - 'MCP_SECRET_TOKEN=${MCP_SECRET_TOKEN:-}'
+      - 'ALLOW_WRITE=${ALLOW_WRITE:-false}'
+      - 'METRICS_ENABLED=${METRICS_ENABLED:-true}'
+      - 'METRICS_COLLECT_INTERVAL=${METRICS_COLLECT_INTERVAL:-300}'
+      - 'LOG_LEVEL=${LOG_LEVEL:-INFO}'
+      - 'ENVIRONMENT=${ENVIRONMENT:-production}'
     volumes:
-      - ./logs:/app/logs
-    restart: unless-stopped
+      - 'jumpcloud-logs:/app/logs'
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      test:
+        - CMD
+        - python
+        - '-c'
+        - "import httpx; httpx.get('http://localhost:8000/health').raise_for_status()"
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 30s
+    restart: unless-stopped
 
   jumpcloud-mcp:
     build:
       context: .
       dockerfile: Dockerfile.mcp
-    env_file: .env
     ports:
-      - "8002:8002"
+      - '8021:8002'
+    environment:
+      - 'JUMPCLOUD_API_KEY=${JUMPCLOUD_API_KEY:-}'
+      - 'JUMPCLOUD_ORG_ID=${JUMPCLOUD_ORG_ID:-}'
+      - 'API_SECRET_TOKEN=${API_SECRET_TOKEN:-}'
+      - 'MCP_SECRET_TOKEN=${MCP_SECRET_TOKEN:-}'
+      - 'ALLOW_WRITE=${ALLOW_WRITE:-false}'
+      - 'MCP_TRANSPORT=${MCP_TRANSPORT:-streamable-http}'
+      - 'MCP_HOST=${MCP_HOST:-0.0.0.0}'
+      - 'MCP_PORT=${MCP_PORT:-8002}'
+      - 'LOG_LEVEL=${LOG_LEVEL:-INFO}'
+      - 'ENVIRONMENT=${ENVIRONMENT:-production}'
     volumes:
-      - ./logs:/app/logs
-    restart: unless-stopped
+      - 'jumpcloud-logs:/app/logs'
+    depends_on:
+      jumpcloud-api:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/')"]
+      test:
+        - CMD
+        - python
+        - '-c'
+        - "import socket; s=socket.create_connection(('localhost',8002),2); s.close()"
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 30s
+    restart: unless-stopped
 
   prometheus:
-    image: prom/prometheus:latest
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./prometheus-alerts.yml:/etc/prometheus/alerts.yml:ro
-      - ./prometheus-recording-rules.yml:/etc/prometheus/recording-rules.yml:ro
-      - prometheus_data:/prometheus
+    build:
+      context: .
+      dockerfile: Dockerfile.prometheus
+    entrypoint: /bin/sh
     command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.retention.time=30d"
+      - '-c'
+      - "cat > /tmp/prometheus.yml <<EOF\nglobal:\n  scrape_interval: 300s\n  evaluation_interval: 300s\nalerting:\n  alertmanagers:\n    - static_configs:\n        - targets: ['alertmanager:9093']\nrule_files:\n  - /etc/prometheus/alerts.yml\n  - /etc/prometheus/recording-rules.yml\nscrape_configs:\n  - job_name: 'jumpcloud'\n    scheme: http\n    authorization:\n      type: Bearer\n      credentials: '$$API_SECRET_TOKEN'\n    static_configs:\n      - targets: ['jumpcloud-api:8000']\n    scrape_interval: 300s\n    scrape_timeout: 30s\nEOF\nexec /bin/prometheus \\\n  --config.file=/tmp/prometheus.yml \\\n  --storage.tsdb.path=/prometheus \\\n  --storage.tsdb.retention.time=90d \\\n  --web.enable-lifecycle\n"
+    environment:
+      - 'API_SECRET_TOKEN=${API_SECRET_TOKEN:-}'
+    volumes:
+      - 'prometheus-data:/prometheus'
+    depends_on:
+      jumpcloud-api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - '--spider'
+        - '-q'
+        - 'http://localhost:9090/-/healthy'
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped
 
   alertmanager:
     build:
       context: .
       dockerfile: Dockerfile.alertmanager
-    ports:
-      - "9093:9093"
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    volumes:
+      - 'alertmanager-data:/alertmanager'
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - '--spider'
+        - '-q'
+        - 'http://localhost:9093/-/healthy'
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped
 
 volumes:
-  prometheus_data:
+  jumpcloud-logs: null
+  prometheus-data: null
+  alertmanager-data: null

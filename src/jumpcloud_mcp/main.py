@@ -65,9 +65,9 @@ _PUBLIC_PATHS = {"/health", "/health/detailed", "/"}
 async def bearer_auth(request: Request, call_next):
     if request.url.path in _PUBLIC_PATHS or request.url.path.startswith("/docs"):
         return await call_next(request)
-    if settings.MCP_SECRET_TOKEN:
+    if settings.API_SECRET_TOKEN:
         auth = request.headers.get("Authorization", "")
-        if auth != f"Bearer {settings.MCP_SECRET_TOKEN}":
+        if auth != f"Bearer {settings.API_SECRET_TOKEN}":
             return JSONResponse(
                 status_code=401,
                 content={"error": "unauthorized"},
