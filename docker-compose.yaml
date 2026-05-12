@@ -15,6 +15,13 @@ services:
       - 'ENVIRONMENT=${ENVIRONMENT:-production}'
     volumes:
       - 'jumpcloud-logs:/app/logs'
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.jumpcloud-api.rule=Host(`jumpcloud.pastorello-lab.com.br`)"
+      - traefik.http.routers.jumpcloud-api.entrypoints=https
+      - traefik.http.routers.jumpcloud-api.tls=true
+      - traefik.http.routers.jumpcloud-api.tls.certresolver=letsencrypt
+      - traefik.http.services.jumpcloud-api.loadbalancer.server.port=8000
     healthcheck:
       test:
         - CMD
@@ -46,6 +53,13 @@ services:
       - 'ENVIRONMENT=${ENVIRONMENT:-production}'
     volumes:
       - 'jumpcloud-logs:/app/logs'
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.jumpcloud-mcp.rule=Host(`jumpcloud-mcp.pastorello-lab.com.br`)"
+      - traefik.http.routers.jumpcloud-mcp.entrypoints=https
+      - traefik.http.routers.jumpcloud-mcp.tls=true
+      - traefik.http.routers.jumpcloud-mcp.tls.certresolver=letsencrypt
+      - traefik.http.services.jumpcloud-mcp.loadbalancer.server.port=8002
     depends_on:
       jumpcloud-api:
         condition: service_healthy
