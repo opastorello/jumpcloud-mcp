@@ -147,6 +147,23 @@ g_service_accounts_total = Gauge("jumpcloud_service_accounts_total", "Total serv
 g_password_policies_total = Gauge("jumpcloud_password_policies_total", "Total password policies")
 g_authn_total = Gauge("jumpcloud_authn_policies_count", "Authn policies count")
 
+# Per-user flag metrics (cleared and repopulated each collection run)
+g_user_suspended_flag = Gauge(
+    "jumpcloud_user_suspended",
+    "Suspended user — one series per user",
+    ["username", "email", "display_name"],
+)
+g_user_locked_flag = Gauge(
+    "jumpcloud_user_locked",
+    "Account-locked user — one series per user",
+    ["username", "email", "display_name"],
+)
+g_user_no_mfa_flag = Gauge(
+    "jumpcloud_user_no_mfa",
+    "User without MFA configured — one series per user",
+    ["username", "email", "display_name"],
+)
+
 # Collection meta
 g_collection_duration = Gauge(
     "jumpcloud_collection_duration_seconds",
@@ -261,14 +278,32 @@ async def _collect_users() -> None:
     pwd_never = 0
     activated = 0
 
+    with g_user_suspended_flag._lock:
+        g_user_suspended_flag._metrics.clear()
+    with g_user_locked_flag._lock:
+        g_user_locked_flag._metrics.clear()
+    with g_user_no_mfa_flag._lock:
+        g_user_no_mfa_flag._metrics.clear()
+
     for u in users:
+        username = u.get("username") or ""
+        email = u.get("email") or ""
+        firstname = u.get("firstname") or ""
+        lastname = u.get("lastname") or ""
+        display_name = f"{firstname} {lastname}".strip() or username
+
         if u.get("suspended"):
             suspended += 1
+            g_user_suspended_flag.labels(username=username, email=email, display_name=display_name).set(1)
         if u.get("accountLocked"):
             locked += 1
+            g_user_locked_flag.labels(username=username, email=email, display_name=display_name).set(1)
         mfa_obj = u.get("mfa") or {}
-        if isinstance(mfa_obj, dict) and mfa_obj.get("configured"):
+        mfa_conf = isinstance(mfa_obj, dict) and mfa_obj.get("configured")
+        if mfa_conf:
             mfa_configured += 1
+        else:
+            g_user_no_mfa_flag.labels(username=username, email=email, display_name=display_name).set(1)
         if u.get("enableUserPortalMultifactor"):
             mfa_portal += 1
         if u.get("password_never_expires") or u.get("passwordNeverExpires"):
