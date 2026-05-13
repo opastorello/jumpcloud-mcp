@@ -218,8 +218,31 @@ async def _timed(name: str, coro):
         return result
     except Exception as exc:
         c_collection_errors.labels(collector=name).inc()
-        logger.warning(f"metrics/{name} error: {exc}")
+        logger.warning(f"metrics/{name} error ({type(exc).__name__}): {exc}")
         return None
+
+
+async def _paginate_v1(name: str, method, limit: int = 100, **kwargs):
+    """Page through a V1 endpoint (results+totalCount) and return (all_results, total_count)."""
+    all_results: list = []
+    skip = 0
+    total = 0
+    t0 = time.monotonic()
+    try:
+        while True:
+            data = await method(limit=limit, skip=skip, **kwargs)
+            page = (data.get("results") or []) if isinstance(data, dict) else []
+            all_results.extend(page)
+            total = data.get("totalCount", 0) if isinstance(data, dict) else len(all_results)
+            skip += len(page)
+            if not page or skip >= total:
+                break
+        g_collection_duration.labels(collector=name).set(time.monotonic() - t0)
+        return all_results, total
+    except Exception as exc:
+        c_collection_errors.labels(collector=name).inc()
+        logger.warning(f"metrics/{name} error ({type(exc).__name__}): {exc}")
+        return None, 0
 
 
 # ---------------------------------------------------------------------------
@@ -227,11 +250,9 @@ async def _timed(name: str, coro):
 # ---------------------------------------------------------------------------
 
 async def _collect_users() -> None:
-    data = await _timed("users", jc_client.list_users(limit=1000))
-    if data is None:
+    users, total = await _paginate_v1("users", jc_client.list_users)
+    if users is None:
         return
-    users = _safe_list(data)
-    total = data.get("totalCount", len(users)) if isinstance(data, dict) else len(users)
 
     suspended = 0
     locked = 0
@@ -266,11 +287,9 @@ async def _collect_users() -> None:
 
 
 async def _collect_systems() -> None:
-    data = await _timed("systems", jc_client.list_systems(limit=1000))
-    if data is None:
+    systems, total = await _paginate_v1("systems", jc_client.list_systems)
+    if systems is None:
         return
-    systems = _safe_list(data)
-    total = data.get("totalCount", len(systems)) if isinstance(data, dict) else len(systems)
 
     active_count = 0
     online_count = 0
@@ -342,7 +361,7 @@ async def _collect_subscriptions() -> None:
 
 
 async def _collect_policies() -> None:
-    data = await _timed("policies", jc_client.list_policies(limit=200))
+    data = await _timed("policies", jc_client.list_policies(limit=100))
     if data is None:
         return
     policies = data if isinstance(data, list) else []
@@ -398,10 +417,11 @@ async def _collect_authn_policies() -> None:
 
 
 async def _collect_alerts() -> None:
-    data = await _timed("alerts", jc_client.list_alerts(limit=500))
+    data = await _timed("alerts", jc_client.list_alerts(limit=100))
     if data is None:
         return
-    alerts = data if isinstance(data, list) else []
+    # API returns {"alerts": [...], "count": N}
+    alerts = data.get("alerts", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
     counts: dict[tuple[str, str], int] = {}
     open_count = 0
     critical_count = 0
@@ -420,10 +440,11 @@ async def _collect_alerts() -> None:
 
 
 async def _collect_health_rules() -> None:
-    data = await _timed("health_rules", jc_client.list_health_rules(limit=200))
+    data = await _timed("health_rules", jc_client.list_health_rules(limit=100))
     if data is None:
         return
-    rules = data if isinstance(data, list) else []
+    # API returns {"rules": [...], "count": N}
+    rules = data.get("rules", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
     status_counts: dict[str, int] = {}
     for r in rules:
         s = (r.get("status") or "unknown").lower()
@@ -494,7 +515,7 @@ async def _collect_infra() -> None:
         _timed("roles", jc_client.list_roles(limit=200)),
         _timed("service_accounts", jc_client.list_service_accounts(limit=200)),
         _timed("password_policies", jc_client.list_password_policies(limit=100)),
-        _timed("commands", jc_client.list_commands(limit=500)),
+        _timed("commands", jc_client.list_commands(limit=100)),
         return_exceptions=True,
     )
     dirs, ldap, duo, iplists, roles, svcacc, pwdpol, cmds = results
